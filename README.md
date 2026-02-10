@@ -41,7 +41,7 @@ An advanced [xbar](https://xbarapp.com/) (formerly BitBar) plugin that displays 
 2.  Install the yfinance dependency: `pip3 install yfinance`.
 3.  Copy `stocks-advanced.py` into your xbar plugins directory (typically `~/Library/Application Support/xbar/plugins/`).
 4.  Rename the file to include a refresh interval in the filename, e.g. `stocks-advanced.18m.py` for an 18-minute refresh cycle.
-5.  Make it executable: `chmod +x stocks-advanced.18m.py`.
+5.  Make it executable: `chmod +x /path/to/stocks-advanced.py`. (Note: if XBar/BitBar gives you a `Couldn't POSIX Spawn` Error, try also doing `xattr -d com.apple.quarantine /path/to/stocks-advanced.py`.)
 6.  Edit the `watch_symbols` dictionary and other configuration variables at the top of the file to suit your portfolio.
 7.  Refresh xbar or let it pick up the new plugin automatically.
 
