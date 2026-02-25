@@ -50,9 +50,9 @@ An advanced [xbar](https://xbarapp.com/) (formerly BitBar) plugin that displays 
 
 ### Front-End Features
 
-**Menu Bar Display.** The plugin displays a static 💲 icon in the macOS menu bar. Clicking it opens a dropdown listing all watched tickers with their current price and session-appropriate percent change.
+**Menu Bar Display.** The plugin displays an icon or live display of Index ticker information in the macOS menu bar. Clicking it opens a dropdown listing all watched tickers with their current price and session-appropriate percent change.
 
-**Multi-Session Awareness.** The plugin detects the current market state reported by yfinance — PRE, REGULAR, POST, CLOSED (or PREPRE and POSTPOST, handled as CLOSED) — and adapts its display accordingly. During pre-market hours, prices and percent changes reflect pre-market trading data. During post-market hours, they reflect post-market data. During regular hours, live regular-session data is shown. When the market is closed, the most recent regular-session figures are displayed in gray. Each session state is indicated by its own configurable icon next to the percent change.
+**Multi-Session Awareness.** The plugin detects the current market state reported by yfinance — PRE, REGULAR, POST, CLOSED (or PREPRE and POSTPOST, which are handled as CLOSED) — and adapts its display accordingly. During pre-market hours, prices and percent changes reflect pre-market trading data. During post-market hours, they reflect post-market data. During regular hours, live regular-session data is shown. When the market is closed, the most recent regular-session figures are displayed in gray. Each session state is indicated by its own configurable icon next to the percent change.
 
 **Accurate Regular-Session Close.** Rather than relying solely on the `currentPrice` or `regularMarketPrice` fields from yfinance's `.info` dictionary (which can be stale or reflect extended-hours prices), the plugin calls `Ticker.history()` with one-minute intraday granularity and filters to the 9:30 AM – 4:00 PM window to extract the true regular-session closing price. It falls back to daily close data if intraday data is unavailable.
 
