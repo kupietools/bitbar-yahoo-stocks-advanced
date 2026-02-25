@@ -1,4 +1,4 @@
-# bitbar-yahoo-stocks-advanced
+# stocks-advanced.py for xbar/Bitbar
 
 An advanced [xbar](https://xbarapp.com/) (formerly BitBar) plugin that displays stock prices and market data in the macOS menu bar dropdown, powered by the [yfinance](https://github.com/ranaroussi/yfinance) Python library. Forked from [longpdo's Yahoo Stock Ticker](https://github.com/longpdo/bitbar-plugins-custom) and substantially extended with improved visual configurability, multi-session market data, per-ticker notes, persistent price alerts, debug tooling, multiple categorized watchlists, and more.
 
