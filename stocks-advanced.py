@@ -1,7 +1,7 @@
 #!/usr/bin/env LC_ALL=en_US.UTF-8 /usr/local/bin/python3
 #
 # <xbar.title>Yahoo Stock Ticker</xbar.title>
-# <xbar.version>v1.1</xbar.version>
+# <xbar.version>v2.0</xbar.version>
 # <xbar.author>Long Do,Michael Kupietz</xbar.author>
 # <xbar.author.github>longpdo,kupietools</xbar.author.github>
 # <xbar.desc>Shows major stock indices in the menu bar and stock symbols in the dropdown menu by pulling data from the Yahoo Finance API. Similar to finance.yahoo.com the prices are delayed, but no API key is necessary. You can also set price alarms for BUY/SELL limits, which will notify you when the limit is reached. This improved version includes per-ticker user notes, more persistent notifications for buy/sell alerts, live data including in the pre-market and post-market sessions, user-settable icons, multi-session price details in the submenus when appropriate, optional debugging information, and no annoying live menu bar updates.</xbar.desc>
@@ -11,7 +11,39 @@
 #
 # original script by longpdo (https://github.com/longpdo)
 # substantial improvements by Michael Kupietz https://github.co/kupietools
-# make sure to do pip3 install yfinance before first run
+
+# # # IMPORTANT: Make sure to do pip3 install yfinance before first run # # #
+
+#HISTORY:
+
+# Feb 24 2026:
+# * Refactor to use categorized watchlist to allow separate menu sections for multiple watchlists
+# * Enhanced Menu Bar Icon with options to display icon and/or session icons
+# * "Alert" Style Notes indicated with a triangle "!" icon instead of just a document icon
+# * Improved Note Formatting so notes are displayed with proper wrapping and consistent font formatting
+# * Internal modifications to price limit alerts to accommodate new watchlist dict format
+# * Timestamp at top of menu to show last update
+# * Standardized variable names to Python standards 
+# * Changed default POST and CLOSED session icons. These may change again
+# * move yfinance import to top of script so doesn't keep recalling it. 
+# * Added option to restore original script's annoying constantly-updating index ticker in the menubar instead of an icon
+
+# Changes from original longpdo version as of mid-February 2026:
+# * Use yfinance instead of curl. Now requires user to pip3 install yfinance before first run. 
+# * Pre-market and post-market session support added
+# * Accurate regular-session close price derived from intraday data via Ticker.history()
+# * Per-ticker notes system added
+# * Persistent alert notifications instead of temporary banners
+# * Menu bar display simplified to an icon, remove indices list and display functions
+# * Custom user settings for all icons and session indicators
+# * 'Symbol' sort option added
+# * Optional 'Debug' submenu added
+# * Regular Close line added to submenu when market is not in regular session
+# * ANSI color scheme updated for better visibility
+# * Post-market percent change calculated from previous close, providing a total-day-plus-after-hours return figure in the main dropdown line during post-market hours.
+# * 4-digit Penny stock price limit validation, for prices like 0.2547
+# * Rate limiting between API calls
+# * Xbar metadata tags. The plugin metadata uses <xbar.*> tags instead of the legacy <bitbar.*> 
 
 from datetime import datetime
 from textwrap import fill, wrap
@@ -22,69 +54,113 @@ import re
 import sys
 import subprocess
 import time
+try:
+    import yfinance as yf
+except ImportError:
+    alert('Error', 'Please install yfinance: pip3 install yfinance')
+    sys.exit()
 
 # ---------------------------------------------------------------------------------------------------------------------
+# BEGIN USER SETTINGS #
 
-# Set this False to turn off Debug submenu. Capitalization counts.
-showDebug = True
+# Enter your stock symbols here in the format: {'category':{'symbol1':1symbol1 note', 'symbol2':'symbol2 note'}, ...}. If you don't want to use categories, just make one '' category. 
 
-# Enter your stock symbols here in the format: {'symbol1':1symbol1 note', 'symbol2':'symbol2 note', ...}
+#Start a note with an exclamation mark ! if you want the ICON_ALERT emoji instead of the NOTEICON emoji
+
 watch_symbols = {
-    'SPY':'',
-    'AMZN': '',
-    'ASTS': 'often mentioned in the same breath as RKLB. https://www.reddit.com/r/stocks/comments/1ptjthh/comment/nvhky8u/ says "I don\'t think RKLB have the same sort of upside as a stock like ASTS with a Starlink-type/high-margin/high-moat TAM opportunity. "',
-    'BQSSF': '',
-    'BYND': '',
-    'CCJ': '',
-    'CHUC':'Penny stock, look at chart',
-    'DRTS': 'see https://www.reddit.com/r/10xPennyStocks/comments/1pp5ldh/the_way_my_father_found_nvidia_back_then_and_you/',
-    'EVTL': 'see https://www.reddit.com/r/DoubleBubbler/comments/1oltkcg/why_vertical_aerospace_nyse_evtl_is_worth/',
-    'GME': '2/3/26 - Maybe buy if drops to 17-19.',
-    'GOOGL': '',
-    'GPK': '',
-    '^GSPC': '',
-    'IAU': '',
-    'KITT': 'Got mentioned but I can\'t find where!',
-    'MOBX': 'very speculative. MSCI server blades looks on TV like it might be improving after faltering, mayb worth a LEAP. Earnings nov 4 \'25',
-    'NFLX': '',
-    'NVDA': '',
-    'ONDS': '',
-    'PLTR': '',
-    'PSLV': '',
-    'PSTV': '',
-    'RGTI': '',
+    'Index': {
+        '^GSPC': '!1D Vap compression Feb 6 26',
+        '^VIX': ''
+    },
+    'Holding': {
+        'AMZN': '',
+        'BYND': '',
+        'GPK': '',
+        'IAU': '',
+        'BYND': '',
+        'ASTS': 'often mentioned in the same breath as RKLB. https://www.reddit.com/r/stocks/comments/1ptjthh/comment/nvhky8u/ says "I don\'t think RKLB have the same sort of upside as a stock like ASTS with a Starlink-type/high-margin/high-moat TAM opportunity. "',
+        'CCJ': '',
+        'ONDS': '!It doesn\'t make sense to hold this call. Paying $700 on a $10 call. B/e is $17. Will lose money as long as it stays above 5. Margin on buying 100 shares right now is not much more than $700, margin interest only $60/yr',
+        'MCK': '',
+        'PEJ': '',
+        'PLTR': '',
+        'RKLB': 'has been like Palantir and many on reddit feel it\'s a great hold for the next 5 or more years ',
+        'WMT': '',
+        'V':'',
+        'WSR': ''
+    },
+    'Technical Indicator Watch' : {
+        'IGV' : '!Software ETF, has pretty much everything. Moves both up and down slower than individual companies, good during uncertainty. 1hr vap compression Feb 10 2026, 30min on feb 6, 2hr compress on feb 17 but looks like missed the bottom, wait for fan'
+    },
+    'Top watchlist': {
+        'GME': '2/3/26 - Maybe buy if drops to 17-19. Or look at a LEAPS around 24',
+        'GOOGL': '',
+        'PSLV': '',
+        'SNDK': '',
+        'RGTI': '',
+    },
+    'Watchlist': {
+        'CHUC': 'Penny stock, look at chart',
+        'DRTS': 'see https://www.reddit.com/r/10xPennyStocks/comments/1pp5ldh/the_way_my_father_found_nvidia_back_then_and_you/',
+        'EVTL': 'see https://www.reddit.com/r/DoubleBubbler/comments/1oltkcg/why_vertical_aerospace_nyse_evtl_is_worth/ - liable to fall temporarily after planned dilution',
+        'KITT': 'Got mentioned but I can\'t find where!',
+        'MOBX': 'very speculative. MSCI server blades looks on TV like it might be improving after faltering, mayb worth a LEAP. Earnings nov 4 \'25',
+        'NFLX': '',
+        'NVDA': '',
+        'PSTV': '',
+        'RDDT': '',
+        'SOXS': '',
+        'SOXL': '',
+        'WMT':''
+    },
+    'Penny watchlist': {
     'RIME': 'Penny stock reddit darling right now. Former jukebox now SaaS, very beaten down, some say wrongly. ROC bands slightly up as price slightly fell in 2026',
-    'RKLB': 'has been like Palantir and many on reddit feel it\'s a great hold for the next 5 or more years ',
-    'SNDK': '',
-    '^VIX': ''
-} 
+    'RXT':'Just partnered with PLTR. Pumped to 1.40.'
+    }
+}
 
+# ICONS
+# # Menu Icons
+ICON_NOTES = '📝'
+ICON_ALERT = '⚠️'
+ICON_ARROW_UP='▲'
+ICON_ARROW_DOWN='▼'
+ICON_MAIN_MENU='💲'
+# # Session Icons
+ICON_SESSION_PRE='🌅' # Price indicator for AM premarket session
+ICON_SESSION_REGULAR='' # Price indicator for day session, default no icon
+ICON_SESSION_POST='🌜' # Price indicator for PM postmarket session
+ICON_SESSION_CLOSED='😴' # Price indicator for market closed
 
-# Enter the order how you want to sort the stock list:
+#MENU DISPLAY OPTIONS
+# # Set this to True if you want to show ICON_MAIN_MENU in the menu icon
+OPTION_SHOW_MENU_ICON = False
+
+# # Set this True or False to turn on or off Debug submenu under each ticker's detail info. Capitalization counts.
+OPTION_SHOW_DEBUG_SUBMENU = False
+
+# # Set this to True if you want to show the session icon in the menu icon
+#NOTE: This currently uses the first ticker in your first category. If you set this to true, for that first ticker, use a symbol that is updated in all sessions, like ^GSPC or GOOG, not one that only shows during the regular session, like ^VIX, or you won't get get PRE and POST session icons. Maybe later I'll put in an option for which ticker to calculate this from, but for now, this is what you get. 
+OPTION_SHOW_SESSION_IN_MENU_ICON = True
+
+# # Enter the order how you want to sort the stock list within each category in the dropbown menu:
 # 'name'                     : Sort alphabetically by company name from A to Z
 # 'symbol'                   : Sort alphabetically by symbol from A to Z
 # 'market_change_winners'    : Sort by value from top winners to losers
 # 'market_change_losers'     : Sort by value from top losers to winners
 # 'market_change_volatility' : Sort by absolute value from top to bottom
 # '' or other values         : Sort by your custom order from the symbols array above
-sort_by = 'market_change_winners'
+SORT_BY = 'market_change_winners'
 
-# Menu Visual Options
+#ANNOYING LIVE INDICES TICKER IN MENUBAR OPTION
+# # To have huge annoying live index ticker updates flash in your menu bar instead the menu icons, set this True
+OPTION_SHOW_ANNOYING_INDICES_IN_MENU = False
 
-NOTESICON = '📝'
-PREICON='🌅' #Visual indicator for AM premarket session
-REGULARICON='' #Visual indicator for day session
-POSTICON='🌛' #Visual indicator for PM postmarket session
-CLOSEDICON='💤' #Visual indicator for market closed
-UPARROW='▲'
-DOWNARROW='▼'
-# ---------------------------------------------------------------------------------------------------------------------
+# # This is number of seconds it waits before updating if OPTION_SHOW_ANNOYING_INDICES_IN_MENU is True; must be > 0
+OPTION_SHOW_ANNOYING_INDICES_IN_MENU_INTERVAL = 5
 
-# ---------------------------------------------------------------------------------------------------------------------
-# CODE STARTING BELOW HERE, DO NOT EDIT IF YOU ARE A REGULAR USER
-# Variables
-
-indices_dict = {
+# # This is the indices list shown in your menu bar if OPTION_SHOW_ANNOYING_INDICES_IN_MENU is True
+INDICES_DICT = {
     '^GSPC': '🇺🇸 S&P 500',
     '^DJI': '🇺🇸 DOW 30',
     '^IXIC': '🇺🇸 NASDAQ',
@@ -92,67 +168,82 @@ indices_dict = {
     '^FTSE': '🇬🇧 FTSE 100',
     '^FCHI': '🇫🇷 CAC 40',
     '^STOXX50E': '🇪🇺 EURO STOXX 50',
-}
+ }
 
-GREEN = '\033[1;32m' #was '\033[32m' but this is too light and not readable
-RED = '\033[1;31m'
-RESET = '\033[0m'
-GRAY = '\033[1;30m'
-FONT = "| font=Monaco size=12" #"| font='Menlo'"
-    
-sessionInfo = {
-    'PRE':{
-        'marketStateName':'PRE',
-        'greenArrow':GREEN + UPARROW,
-        'noArrow':' ',
-        'redArrow':RED + DOWNARROW,
-        'chgPctKeyName':'preMarketChangePercent',
-        'icon':PREICON,
-        'offHoursPriceName':'preMarketPrice'
-    },
-    'REGULAR':{
-        'marketStateName':'OPEN',
-        'greenArrow':GREEN + UPARROW,
-        'noArrow':' ',
-        'redArrow':RED + DOWNARROW,
-        'chgPctKeyName':'regularMarketChangePercent',
-        'icon':REGULARICON,
-        'offHoursPriceName':''
-    },
-    'POST':{
-        'marketStateName':'POST',
-        'greenArrow':GREEN + UPARROW,
-        'noArrow':' ',
-        'redArrow':RED + DOWNARROW,
-        'chgPctKeyName':'postMarketChangePercent',
-        'icon':POSTICON,
-        'offHoursPriceName':'postMarketPrice'
-    },
-    'CLOSED':{
-        'marketStateName':'CLOSED',
-        'greenArrow':GRAY + UPARROW,
-        'noArrow':GRAY + ' ',
-        'redArrow':GRAY + DOWNARROW,
-        'chgPctKeyName':'regularMarketChangePercent',
-        'icon':CLOSEDICON,
-        'offHoursPriceName':''
-    },
-    'PREPRE':{ #yfinance sometimes indicates PREPRE for the 1AM session. Treating it as CLOSED because yfinance doesn't seem to return price info fields for it like it does for pre, it appears to be functionally CLOSED. If it ever starts returning prepre prices, variables will have to be defined for it like for pre and post. 
-        'marketStateName':'CLOSED',
-        'greenArrow':GRAY + UPARROW,
-        'noArrow':GRAY + ' ',
-        'redArrow':GRAY + DOWNARROW,
-        'chgPctKeyName':'regularMarketChangePercent',
-        'icon':CLOSEDICON,
-        'offHoursPriceName':''
-    }
-}
-    
-    
-symbols=list(watch_symbols)
+# 
+
+# END USER SETTINGS
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------------------------------------------------
+# CODE STARTING BELOW HERE, DO NOT EDIT IF YOU ARE A REGULAR USER
+# Variables
+
+INDICES_DICT = {
+    '^GSPC': '🇺🇸 S&P 500',
+    '^DJI': '🇺🇸 DOW 30',
+    '^IXIC': '🇺🇸 NASDAQ',
+    '^GDAXI': '🇩🇪 DAX',
+    '^FTSE': '🇬🇧 FTSE 100',
+    '^FCHI': '🇫🇷 CAC 40',
+    '^STOXX50E': '🇪🇺 EURO STOXX 50',
+ }
+
+ANSI_GREEN = '\033[1;32m' #was '\033[32m' but this is too light and not readable
+ANSI_RED = '\033[1;31m'
+ANSI_RESET = '\033[0m'
+ANSI_GRAY = '\033[1;30m'
+FONT = "| font=Monaco size=12" #"| font='Menlo'"
+FONT_SMALL = "| size=11" #"| font='Menlo'"
+    
+SESSION_INFO = {
+    'PRE':{
+        'marketStateName':'PRE',
+        'greenArrow':ANSI_GREEN + ICON_ARROW_UP,
+        'noArrow':' ',
+        'redArrow':ANSI_RED + ICON_ARROW_DOWN,
+        'chgPctKeyName':'preMarketChangePercent',
+        'icon':ICON_SESSION_PRE,
+        'offHoursPriceName':'preMarketPrice',
+        'menuicon':ICON_SESSION_PRE
+    },
+    'REGULAR':{
+        'marketStateName':'OPEN',
+        'greenArrow':ANSI_GREEN + ICON_ARROW_UP,
+        'noArrow':' ',
+        'redArrow':ANSI_RED + ICON_ARROW_DOWN,
+        'chgPctKeyName':'regularMarketChangePercent',
+        'icon':ICON_SESSION_REGULAR,
+        'offHoursPriceName':'',
+        'menuicon':''
+    },
+    'POST':{
+        'marketStateName':'POST',
+        'greenArrow':ANSI_GREEN + ICON_ARROW_UP,
+        'noArrow':' ',
+        'redArrow':ANSI_RED + ICON_ARROW_DOWN,
+        'chgPctKeyName':'postMarketChangePercent',
+        'icon':ICON_SESSION_POST,
+        'offHoursPriceName':'postMarketPrice',
+        'menuicon':ICON_SESSION_POST
+    },
+    'CLOSED':{
+        'marketStateName':'CLOSED',
+        'greenArrow':ANSI_GRAY + ICON_ARROW_UP,
+        'noArrow':ANSI_GRAY + ' ',
+        'redArrow':ANSI_GRAY + ICON_ARROW_DOWN,
+        'chgPctKeyName':'regularMarketChangePercent',
+        'icon':ICON_SESSION_CLOSED,
+        'offHoursPriceName':'',
+        'menuicon':ICON_SESSION_CLOSED
+    }
+}
+    
+categories = list(watch_symbols)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 
 # macOS Alerts, Prompts and Notifications -----------------------------------------------------------------------------
 # Display a macOS specific alert dialog to get confirmation from user to continue
@@ -298,11 +389,6 @@ def get_regular_session_close(t):
 
 
 def get_stock_data(symbol):
-    try:
-        import yfinance as yf
-    except ImportError:
-        alert('Error', 'Please install yfinance: pip3 install yfinance')
-        sys.exit()
     
     try:
         ticker = yf.Ticker(symbol)
@@ -377,62 +463,7 @@ def get_stock_data(symbol):
         
     except Exception as e:
         alert('Error', f'Failed to fetch data for {symbol}: {str(e)}')
-        sys.exit()
-
-# Curl the yahoo api for data - OLD, DAILY INFO ONLY
-#def xget_stock_data(symbol):
-#    try:
-#        import yfinance as yf
-#    except ImportError:
-#        alert('Error', 'Please install yfinance: pip3 install yfinance')
-#        sys.exit()
-#    
-#    try:
-#        ticker = yf.Ticker(symbol)
-#        info = ticker.info
-#        
-#        # Get current price and other data
-#        regular_market_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
-#        regular_market_price = info.get('regularMarketPrice', 0)
-#        previous_close = info.get('previousClose', 0)
-#        
-#        if previous_close > 0:
-#            change_percent = ((regular_market_price - previous_close) / previous_close) * 100
-#        else:
-#            change_percent = 0
-#        
-#        # Create a compatible data structure matching the original format
-#        stock_data = {
-#            'price': {
-#                'symbol': symbol,
-#                'shortName': info.get('shortName', symbol),
-#                'longName': info.get('longName', info.get('shortName', symbol)),
-#                'regularMarketPrice': {'raw': regular_market_price, 'fmt': f"{regular_market_price:.2f}"},
-#                'regularMarketTime': int(info.get('regularMarketTime', 0)),
-#                'regularMarketChangePercent': {'raw': change_percent, 'fmt': f"{change_percent:.2f}%"},
-#                'regularMarketChange': {'raw': regular_market_price - previous_close, 'fmt': f"{regular_market_price - previous_close:.2f}"},
-#                'regularMarketOpen': {'raw': info.get('regularMarketOpen', 0), 'fmt': f"{info.get('regularMarketOpen', 0):.2f}"},
-#                'regularMarketPreviousClose': {'raw': previous_close, 'fmt': f"{previous_close:.2f}"},
-#                'marketState': info.get('marketState', 'CLOSED'),
-#                'currency': info.get('currency', 'USD')
-#            },
-#            'summaryDetail': {
-#                'regularMarketDayHigh': {'raw': info.get('dayHigh', 0), 'fmt': f"{info.get('dayHigh', 0):.2f}"},
-#                'regularMarketDayLow': {'raw': info.get('dayLow', 0), 'fmt': f"{info.get('dayLow', 0):.2f}"},
-#                'fiftyTwoWeekHigh': {'raw': info.get('fiftyTwoWeekHigh', 0), 'fmt': f"{info.get('fiftyTwoWeekHigh', 0):.2f}"},
-#                'fiftyTwoWeekLow': {'raw': info.get('fiftyTwoWeekLow', 0), 'fmt': f"{info.get('fiftyTwoWeekLow', 0):.2f}"},
-#                'bid': {'raw': info.get('bid', 0), 'fmt': f"{info.get('bid', 0):.2f}" if info.get('bid') else 'N/A'},
-#                'ask': {'raw': info.get('ask', 0), 'fmt': f"{info.get('ask', 0):.2f}" if info.get('ask') else 'N/A'}
-#            }
-#        }
-#        
-#        return stock_data
-#
-#    except Exception as e:
-#        alert('Error', f'Failed to fetch data for {symbol}: {str(e)}')
-#        sys.exit()
-#        
-# END Curl the yahoo api for data - OLD DAILY ONLY                
+        sys.exit()              
 
 # Check a given stock symbol against the price limit list
 def check_price_limits(symbol_to_be_checked, current_price, price_limit_list, data_file):
@@ -458,50 +489,44 @@ def check_price_limits(symbol_to_be_checked, current_price, price_limit_list, da
                 remove_line_from_data_file(data_file, limit_entry)
 
 
-# Print the indices information in the menu bar - I DISABLED THE CALL TO THIS, IT'S NEVER CALLED, DON'T WANT TICKERS FLASHING IN THE MENUBAR
-#def print_index(index, name):
-#    market_state = index['price']['marketState']
-#    change = index['price']['regularMarketChangePercent']['raw']
-#
-#    # Setting color and emojis depending on the market state and the market change
-#    if market_state == 'PRE' and index['price']['preMarketPrice']['raw']>0:
-#        # Set color for positive and negative values
-#        color = ''
-#        if change > 0:
-#            color = GREEN + '▲'
-#        if change < 0:
-#            color = RED + '▼'
-#        # Format change to decimal with a precision of two and reset ansi color at the end
-#        colored_change = PREICON+color + \
-#            '(' + index['price']['preMarketChangePercent']['fmt'] + ') ' + RESET
-#    elif market_state == 'POST' and index['price']['postMarketPrice']['raw']>0:
-#        # Set color for positive and negative values
-#        color = ''
-#        if change > 0:
-#            color = GREEN + '▲'
-#        if change < 0:
-#            color = RED + '▼'
-#        # Format change to decimal with a precision of two and reset ansi color at the end
-#        colored_change = POSTICON+color + \
-#            '(' + index['price']['postMarketChangePercent']['fmt'] + ') ' + RESET
-#    elif market_state == 'REGULAR':
-#        # Set color for positive and negative values
-#        color = ''
-#        if change > 0:
-#            color = GREEN + '▲'
-#        if change < 0:
-#            color = RED + '▼'
-#        # Format change to decimal with a precision of two and reset ansi color at the end
-#        colored_change = color + \
-#            '(' + index['price']['regularMarketChangePercent']['fmt'] + ') ' + RESET
-#    else: #market_state == 'CLOSED':
-#        # Set change with a moon emoji for closed markets
-#        colored_change = CLOSEDICON + \
-#            '(' + index['price']['regularMarketChangePercent']['fmt'] + ') '
-#
-#    # Print the index info only to the menu bar
-#    print(name, colored_change, '| dropdown=false', sep=' ')
-#
+
+def print_index(s, name): 
+#restored from older version as of v2.0; I've made turning it on or off it a user option
+    market_state = index['price']['marketState']
+    effective_market_state = get_eff_market_state(market_state)
+    #NOTE: yfinance sometimes returns PREPRE and POSTPOST sessions, but no dedicated info for these sessions. effective_market_state ensures anything but PRE, POST, or REGULAR is handled as CLOSED.
+    off_name = SESSION_INFO.get(effective_market_state, {}).get('offHoursPriceName') 
+    change = index['price']['regularMarketChangePercent']['raw']
+    raw_price = (
+        s.get('price', {})
+         .get(off_name, {})
+         .get('raw')
+    ) #get() allows nonexistent keys, not every session has s['price'][SESSION_INFO[market_state]['offHoursPriceName']]['raw'], which is how raw_price would be looked up if those keys never failed
+
+    color=''
+    
+    # Setting color and emojis depending on the market state and the market change
+    if (effective_market_state in ('PRE','POST') and raw_price) or effective_market_state=='REGULAR':
+        # Set color for positive and negative values
+        color = ''
+        if change > 0:
+            color = SESSION_INFO[effective_market_state]['greenArrow']
+        if change < 0:
+            color = SESSION_INFO[effective_market_state]['redArrow']
+        if change == 0:
+            color = SESSION_INFO[effective_market_state]['noArrow']
+        # Format change to decimal with a precision of two and reset ansi color at the end
+        change_in_percent = '(' + \
+            s['price'][SESSION_INFO[effective_market_state]['chgPctKeyName']]['fmt'] + ')'
+        colored_change = SESSION_INFO[effective_market_state]['icon'] + ' ' + color + change_in_percent + ANSI_RESET
+    else: #market_state == 'CLOSED':
+        # Set change with a moon emoji for closed markets
+        colored_change = ICON_SESSION_CLOSED + \
+            '(' + index['price'][SESSION_INFO[effective_market_state]['chgPctKeyName']]['fmt'] + ') '
+
+    # Print the index info only to the menu bar
+    print(name, colored_change, '| dropdown=false', sep=' ')
+
 
 # Custom indenting to print debug info if desired
 
@@ -667,43 +692,48 @@ def dashed_json_no_brackets(
     walk(obj, 0)
     return "\n".join(lines)
 
+# Set effective market state
+def get_eff_market_state(market_state):
+    this_state = market_state if market_state in ('PRE','REGULAR','POST') else 'CLOSED'
+    return this_state
+
 # Print the stock info in the dropdown menu with additional info in the submenu
-def print_stock(s):
+def print_stock(s,category):
     market_state = s['price']['marketState']
     change = s['price']['regularMarketChangePercent']['raw']
 
     # Setting color and emojis depending on the market state and the market change
     # Now using dict with info for sessions rather than separate conditionals as in original
-    
-    off_name = sessionInfo.get(market_state, {}).get('offHoursPriceName') 
-
+    effective_market_state = get_eff_market_state(market_state)
+    off_name = SESSION_INFO.get(effective_market_state, {}).get('offHoursPriceName') 
     raw_price = (
         s.get('price', {})
          .get(off_name, {})
          .get('raw')
-    ) #get() allows nonexistent keys, not every session has s['price'][sessionInfo[market_state]['offHoursPriceName']]['raw'], which is how raw_price would be looked up if those keys never failed
-
+    ) #get() allows nonexistent keys, not every session has s['price'][SESSION_INFO[market_state]['offHoursPriceName']]['raw'], which is how raw_price would be looked up if those keys never failed
     color = ''
-    effMarketState = market_state if market_state in ('PRE','REGULAR','POST') else 'CLOSED'
+    #NOTE: yfinance sometimes returns PREPRE and POSTPOST sessions, but no dedicated info for these sessions. effective_market_state ensures anything but PRE, POST, or REGULAR is handled as CLOSED.
+    
     # Setting color and emojis depending on the market state and the market change
-    if (effMarketState in ('PRE','POST') and raw_price) or effMarketState=='REGULAR':
+    if (effective_market_state in ('PRE','POST') and raw_price) or effective_market_state=='REGULAR':
         # Set color for positive and negative values       
-        market = sessionInfo[effMarketState]['marketStateName']
+        market = SESSION_INFO[effective_market_state]['marketStateName']
         if change > 0:
-            color = sessionInfo[effMarketState]['greenArrow']
+            color = SESSION_INFO[effective_market_state]['greenArrow']
         if change < 0:
-            color = sessionInfo[effMarketState]['redArrow']
+            color = SESSION_INFO[effective_market_state]['redArrow']
         if change == 0:
-            color = sessionInfo[effMarketState]['noArrow']
+            color = SESSION_INFO[effective_market_state]['noArrow']
         # Format change to decimal with a precision of two and reset ansi color at the end
         change_in_percent = '(' + \
-            s['price'][sessionInfo[effMarketState]['chgPctKeyName']]['fmt'] + ')'
-        colored_change = sessionInfo[effMarketState]['icon'] + ' ' + color + change_in_percent + RESET
+            s['price'][SESSION_INFO[effective_market_state]['chgPctKeyName']]['fmt'] + ')'
+        colored_change = SESSION_INFO[effective_market_state]['icon'] + ' ' + color + change_in_percent + ANSI_RESET
     else: #if market_state == 'CLOSED':
-        market = sessionInfo[effMarketState]['marketStateName']
+        market = SESSION_INFO[effective_market_state]['marketStateName']
         # Set change with a moon emoji for closed markets
-        colored_change = sessionInfo[effMarketState]['icon'] + ' ' + \
-            '(' + s['price'][sessionInfo[effMarketState]['chgPctKeyName']]['fmt'] + ') '
+        colored_change = SESSION_INFO[effective_market_state]['icon'] + ' ' + \
+            '(' + s['price'][SESSION_INFO[effective_market_state]['chgPctKeyName']]['fmt'] + ') '
+    
 
     # Remove appending stock exchange symbol for foreign exchanges, e.g. Apple stock symbol in Frankfurt: APC.F -> APC
     symbol = s['price']['symbol'].split('.')[0]
@@ -720,7 +750,7 @@ def print_stock(s):
     fifty_two_week_range = fifty_two_week_high - fifty_two_week_low
 
     # Print the stockf seen in the dropdown menu
-    stock_info = '{:<5} {:>10} {:<10}' + ((' '+NOTESICON) if watch_symbols[symbol] != '' else '') + FONT
+    stock_info = '{:<5} {:>10} {:<10}' + ((' '+ICON_NOTES if watch_symbols[category][symbol][0] != "!" else ICON_ALERT) if watch_symbols[category][symbol] != '' else '') + FONT
     print(stock_info.format(
         symbol, s['price']['currentPrice']['fmt'], colored_change))
     # Print additional stock info in the submenu
@@ -745,10 +775,12 @@ def print_stock(s):
     print(stock_submenu.format('--52 Week Range:'+LDOTS,
           '{:.2f}'.format(fifty_two_week_range)))
     print('-----')
-    if watch_symbols[symbol] != '':
-        print(fill('--'+NOTESICON+' Notes: '+ watch_symbols[symbol]+FONT,width=60,subsequent_indent="--"))
+    if watch_symbols[category][symbol] != '':
+        theNote = fill('--'+ICON_NOTES+' Notes: '+ watch_symbols[category][symbol],width=60,subsequent_indent="--")
+        print('\n'.join(line + FONT_SMALL for line in theNote.splitlines())) 
+        #only way to suffix every line created with fill()
         print('-----')
-    if showDebug:
+    if OPTION_SHOW_DEBUG_SUBMENU:
         print('--DEBUG')
         print(stock_submenu.format('----postMarketPrice',s['price']['postMarketPrice']['raw']))
         print('----raw yfinance info')
@@ -789,8 +821,7 @@ if __name__ == '__main__':
 
     # Normal execution by BitBar without any parameters
     if len(sys.argv) == 1:
-        stocks = []
-
+       
         # Check if hidden .db file exists
         try:
             price_limit_list = read_data_file(data_file)
@@ -798,42 +829,64 @@ if __name__ == '__main__':
             price_limit_list = []
 
         # Print the menu bar information
-        # for symbol, name in indices_dict.items():
-        #     time.sleep(1)  # 1 second delay between requests
-        #     index = get_stock_data(symbol)
-        #     print_index(index, name)
+        # restored for version 2.0; I've made turning it on or off it a user option. 
+        if OPTION_SHOW_ANNOYING_INDICES_IN_MENU:
+            for symbol, name in INDICES_DICT.items():
+                time.sleep(OPTION_SHOW_ANNOYING_INDICES_IN_MENU_INTERVAL)  # 1 second delay between requests
+                index = get_stock_data(symbol)
+                print_index(index, name)
 
-        # Print just a dollar sign in the menu bar
-        print('💲')
+        # Print icon in the menu bar
+        
+        first_category_name, first_symdict = next(iter(watch_symbols.items()))
+        first_stock = next(iter(first_symdict))  # dict iterates over keys by default
 
-        # For each symbol: curl the data, check against the .db file for limits
-        for symbol in symbols:
-            time.sleep(1)  # 1 second delay between requests
-            stock = get_stock_data(symbol)
-            stocks.append(stock) 
-            check_price_limits(
-                symbol, stock['price']['currentPrice']['raw'], price_limit_list, data_file)
+
+        first_stock_data=get_stock_data(first_stock)
+        menu_market_state = get_eff_market_state(first_stock_data['price']['marketState'])
+        session_menu_icon=SESSION_INFO[menu_market_state]['menuicon'] 
+        print((ICON_MAIN_MENU if (OPTION_SHOW_MENU_ICON or (OPTION_SHOW_SESSION_IN_MENU_ICON and not session_menu_icon)) else '') + (session_menu_icon if OPTION_SHOW_SESSION_IN_MENU_ICON else ''))
+        # make sure to at least show menuicon if session menu icon is enabled but the menu icon for the current session is blank 
+
+        currtime = datetime.now()
+        print("---")
+        print("As of " + currtime.strftime("%Y-%m-%d %H:%M:%S"))
+
+        for category in watch_symbols:
+            category_symbols = watch_symbols[category].keys()
+            stocks = []
+                
+            # For each symbol: curl the data, check against the .db file for limits
+            for symbol in category_symbols:
+                time.sleep(1)  # 1 second delay between requests
+                stock = first_stock_data if first_stock_data else get_stock_data(symbol)
+                first_stock_data = {}
+                stocks.append(stock) 
+                check_price_limits(
+                    symbol, stock['price']['currentPrice']['raw'], price_limit_list, data_file)
 
             
-        # Set order of stocks
-        if sort_by == 'name':
-            stocks = sorted(stocks, key=lambda k: k['price']['shortName'])
-        if sort_by == 'symbol':
-            stocks = sorted(stocks, key=lambda k: k['price']['symbol'])
-        if sort_by == 'market_change_winners':
-            stocks = sorted(
-                stocks, key=lambda k: k['price']['regularMarketChangePercent']['raw'], reverse=True)
-        if sort_by == 'market_change_losers':
-            stocks = sorted(
-                stocks, key=lambda k: k['price']['regularMarketChangePercent']['raw'])
-        if sort_by == 'market_change_volatility':
-            stocks = sorted(stocks, key=lambda k: abs(
-                k['price']['regularMarketChangePercent']['raw']), reverse=True)
+            # Set order of stocks
+            if SORT_BY == 'name':
+                stocks = sorted(stocks, key=lambda k: k['price']['shortName'])
+            if SORT_BY == 'symbol':
+                stocks = sorted(stocks, key=lambda k: k['price']['symbol'])
+            if SORT_BY == 'market_change_winners':
+                stocks = sorted(
+                    stocks, key=lambda k: k['price']['regularMarketChangePercent']['raw'], reverse=True)
+            if SORT_BY == 'market_change_losers':
+                stocks = sorted(
+                    stocks, key=lambda k: k['price']['regularMarketChangePercent']['raw'])
+            if SORT_BY == 'market_change_volatility':
+                stocks = sorted(stocks, key=lambda k: abs(
+                    k['price']['regularMarketChangePercent']['raw']), reverse=True)
 
-        # Print the stock information inside the dropdown menu
-        print('---')
-        for stock in stocks:
-            print_stock(stock)
+            # Print the stock information inside the dropdown menu
+            print('---')
+            if (category != ''):
+                print (category+":"+FONT)
+            for stock in stocks:
+                print_stock(stock,category)
 
         # Print the price limit section inside the dropdown
         print_price_limits(price_limit_list)
@@ -847,9 +900,13 @@ if __name__ == '__main__':
             limit_type_choices = '["BUY", "SELL"]'
             limit_type = prompt_selection(
                 limit_type_prompt, limit_type_choices)
+                
+            # begin generate symbols variable as appeared in the original script instead of watch_symbols before I added categories
+            symbols = sorted({sym for symdict in watch_symbols.values() for sym in symdict.keys()})
+            symbols_js = json.dumps(all_symbols) #safer than dumping a python list into JXA as done in prompt_selection
 
             # Get the user selection of all tracked symbols
-            symbol = prompt_selection('Select stock symbol:', symbols)
+            symbol = prompt_selection('Select stock symbol:', symbols_js)
 
             # Get the user input for a price limit, info message includes the current market price
             #price = prompt('Current price of ' + symbol + ' is ' + str(get_stock_data(
