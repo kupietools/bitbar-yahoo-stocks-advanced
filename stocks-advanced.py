@@ -1,7 +1,7 @@
 #!/usr/bin/env LC_ALL=en_US.UTF-8 /usr/local/bin/python3
 #
 # <xbar.title>Yahoo Stock Ticker</xbar.title>
-# <xbar.version>v2.0</xbar.version>
+# <xbar.version>v2.01</xbar.version>
 # <xbar.author>Long Do,Michael Kupietz</xbar.author>
 # <xbar.author.github>longpdo,kupietools</xbar.author.github>
 # <xbar.desc>Shows major stock indices in the menu bar and stock symbols in the dropdown menu by pulling data from the Yahoo Finance API. Similar to finance.yahoo.com the prices are delayed, but no API key is necessary. You can also set price alarms for BUY/SELL limits, which will notify you when the limit is reached. This improved version includes per-ticker user notes, more persistent notifications for buy/sell alerts, live data including in the pre-market and post-market sessions, user-settable icons, multi-session price details in the submenus when appropriate, optional debugging information, and no annoying live menu bar updates.</xbar.desc>
@@ -136,9 +136,6 @@ ICON_SESSION_CLOSED='😴' # Price indicator for market closed
 # # Set this to True if you want to show ICON_MAIN_MENU in the menu icon
 OPTION_SHOW_MENU_ICON = False
 
-# # Set this True or False to turn on or off Debug submenu under each ticker's detail info. Capitalization counts.
-OPTION_SHOW_DEBUG_SUBMENU = False
-
 # # Set this to True if you want to show the session icon in the menu icon
 #NOTE: This currently uses the first ticker in your first category. If you set this to true, for that first ticker, use a symbol that is updated in all sessions, like ^GSPC or GOOG, not one that only shows during the regular session, like ^VIX, or you won't get get PRE and POST session icons. Maybe later I'll put in an option for which ticker to calculate this from, but for now, this is what you get. 
 OPTION_SHOW_SESSION_IN_MENU_ICON = True
@@ -152,11 +149,14 @@ OPTION_SHOW_SESSION_IN_MENU_ICON = True
 # '' or other values         : Sort by your custom order from the symbols array above
 SORT_BY = 'market_change_winners'
 
+# # Set this True or False to turn on or off Debug submenu under each ticker's detail info. Capitalization counts.
+OPTION_SHOW_DEBUG_SUBMENU = False
+
 #ANNOYING LIVE INDICES TICKER IN MENUBAR OPTION
 # # To have huge annoying live index ticker updates flash in your menu bar instead the menu icons, set this True
 OPTION_SHOW_ANNOYING_INDICES_IN_MENU = False
 
-# # This is number of seconds it waits before updating if OPTION_SHOW_ANNOYING_INDICES_IN_MENU is True; must be > 0
+# # This is number of seconds it waits before annoying updates if OPTION_SHOW_ANNOYING_INDICES_IN_MENU is True; must be > 0
 OPTION_SHOW_ANNOYING_INDICES_IN_MENU_INTERVAL = 5
 
 # # This is the indices list shown in your menu bar if OPTION_SHOW_ANNOYING_INDICES_IN_MENU is True
@@ -170,7 +170,13 @@ INDICES_DICT = {
     '^STOXX50E': '🇪🇺 EURO STOXX 50',
  }
 
-# 
+# MENU FONTS
+
+MENU_FONT = "Monaco" # Main menu
+MENU_FONT_SIZE = "12" # Main menu
+NOTES_FONT = "Monaco" #Notes in submenu, when present
+NOTES_FONT_SIZE = "11" #Notes in submenu, when present
+
 
 # END USER SETTINGS
 
@@ -178,24 +184,12 @@ INDICES_DICT = {
 
 # ---------------------------------------------------------------------------------------------------------------------
 # CODE STARTING BELOW HERE, DO NOT EDIT IF YOU ARE A REGULAR USER
-# Variables
-
-INDICES_DICT = {
-    '^GSPC': '🇺🇸 S&P 500',
-    '^DJI': '🇺🇸 DOW 30',
-    '^IXIC': '🇺🇸 NASDAQ',
-    '^GDAXI': '🇩🇪 DAX',
-    '^FTSE': '🇬🇧 FTSE 100',
-    '^FCHI': '🇫🇷 CAC 40',
-    '^STOXX50E': '🇪🇺 EURO STOXX 50',
- }
+# Constants
 
 ANSI_GREEN = '\033[1;32m' #was '\033[32m' but this is too light and not readable
 ANSI_RED = '\033[1;31m'
 ANSI_RESET = '\033[0m'
 ANSI_GRAY = '\033[1;30m'
-FONT = "| font=Monaco size=12" #"| font='Menlo'"
-FONT_SMALL = "| size=11" #"| font='Menlo'"
     
 SESSION_INFO = {
     'PRE':{
@@ -242,6 +236,8 @@ SESSION_INFO = {
     
 categories = list(watch_symbols)
 
+FONT = "| font="+MENU_FONT+" size="+MENU_FONT_SIZE
+FONT_SMALL = "| font="+NOTES_FONT+" size="+NOTES_FONT_SIZE
 
 # ---------------------------------------------------------------------------------------------------------------------
 
